@@ -9,11 +9,13 @@ from mediaflow_proxy.extractors.factory import ExtractorFactory
 from mediaflow_proxy.schemas import ExtractorURLParams
 from mediaflow_proxy.utils.cache_utils import get_cached_extractor_result, set_cache_extractor_result
 from mediaflow_proxy.utils.http_utils import (
+    DownloadError,
     encode_mediaflow_proxy_url,
     get_original_scheme,
     ProxyRequestHeaders,
     get_proxy_headers,
 )
+from mediaflow_proxy.utils.base64_utils import process_potential_base64_url
 
 extractor_router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -28,6 +30,10 @@ async def extract_url(
 ):
     """Extract clean links from various video hosting services."""
     try:
+        # Process potential base64 encoded destination URL
+        processed_destination = process_potential_base64_url(extractor_params.destination)
+        extractor_params.destination = processed_destination
+        
         cache_key = f"{extractor_params.host}_{extractor_params.model_dump_json()}"
         response = await get_cached_extractor_result(cache_key)
         if not response:
@@ -53,6 +59,9 @@ async def extract_url(
 
         return response
 
+    except DownloadError as e:
+        logger.error(f"Extraction failed: {str(e)}")
+        raise HTTPException(status_code=e.status_code, detail=str(e))
     except ExtractorError as e:
         logger.error(f"Extraction failed: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
